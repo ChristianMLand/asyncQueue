@@ -49,7 +49,7 @@ Request config options include:
 q.enqueue(() => Promise.reject("Error"), { maxRetries: 3, delay: 250 });
 ```
 ## Methods for consuming the queue (**FIFO**):
-You can consume finished requests with the `dequeue` method.
+You can consume requests in insertion order as they finish with the `dequeue` method.
 `dequeue` is an asynchronous method that needs to be awaited, and returns a `Result` object.
 `Result` objects have the following properties:
 - `value`: The value the request resolved to or an `Error` object if the request failed.
@@ -67,7 +67,7 @@ while (q.size > 0) {
 // throws an exception
 const result = await q.dequeue();
 ```
-Finished requests can also be consumed by iterating over the queue as an async iterable.
+Requests can also be consumed as they finish by iterating over the queue as an async iterable.
 ```ts
 for await (const result of q) {
   console.log(result.unwrap("Failed"));
@@ -107,12 +107,12 @@ q.on("retry", ({ index, priority }) => {
 ```
 The event data provided includes:
 - `order`: The order number in which the request was enqueued, starting from 1.
-- `attempts`: The amount of times the request has currently been attempted, starting from 0. This only increments for failed requests.
+- `attempts`: The amount of times the request has failed, starting from 0.
 
 as well as any provided task config data.
 ## Iterating synchronously (Not recommended)
 In addition to being an asychronous iterable, `AsyncQueue` is also a synchronous iterable that yields promises.
->**NOTE:** any `AsyncQueue` methods performed while iterating synchronously (such as `enqueue()` or `clear()`) will not take effect until the iteration completes. This includes automatically retrying any failed requests.
+>**NOTE:** any `AsyncQueue` methods performed while iterating synchronously (such as `enqueue()` or `clear()`) will not take effect until the iteration completes. *This includes automatically retrying any failed requests*.
 ```ts
 for (const task of q) {
     const result = await task;
@@ -154,12 +154,14 @@ console.log(await Promise.race(q)) // always the first item of the queue!
   ```
 --------------------------------------
 # AsyncPriorityQueue
-Similar to `AsyncQueue`, `AsyncPriorityQueue` provides the same interface, but with the addition of allowing for requests to specify a priority with their config. Alternatively a default priority can be set on the config of the queue itself. A max heap is utilized internally, so bigger numbers have a higher priority.
+Similar to `AsyncQueue`, `AsyncPriorityQueue` provides the same interface, but with the addition of allowing for requests to specify a priority with their config. 
+
+Alternatively a default priority can be set on the config of the queue itself. 
+>A max heap is utilized internally, so bigger numbers have a higher priority.
 ```ts
 const q = new AsyncPriorityQueue({
   maxWorkers: 3,
   defaultMaxRetries: 3,
-  defaultPriority: 2,
   factory: api,
 });
 
@@ -188,3 +190,5 @@ If you don't need an asynchronous data structure, both a `Queue` and `PriorityQu
 - `clear()`: A method to clear the queue of any remaining items.
 
 however the `PriorityQueue` additionally takes a second argument with `enqueue()` to provide the priority.
+
+Both `Queue` and `PriorityQueue` are also synchronous iterables, and items can be consumed by iterating over them.
