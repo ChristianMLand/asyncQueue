@@ -32,24 +32,22 @@ export type Task<T> = () => Promise<Result<T>>;
 
 export type Factory<Input, Output> = (value: Input) => Promise<Output>;
 
-export type AsyncQueueConfig<Input, Output> = {
-  maxWorkers?: number,
-  factory?: Factory<Input, Output>,
-  defaultMaxRetries?: number,
-  defaultDelay?: number
+export interface AsyncQueueConfig<Input, Output> {
+  maxWorkers?: number;
+  factory?: Factory<Input, Output>;
+  defaultMaxRetries?: number;
+  defaultDelay?: number;
 }
 
-export type TaskConfig = {
-  order?: number,
-  maxRetries?: number,
-  attempts?: number,
-  processing?: number,
-  delay?: number,
+export interface RequestConfig {
+  delay?: number;
+  maxRetries?: number;
 }
 
-export type RequestConfig = {
-  delay?: number,
-  maxRetries?: number
+export interface TaskConfig extends RequestConfig {
+  order?: number;
+  attempts?: number;
+  processing?: number;
 }
 
 export type CallbackMap = {
@@ -95,22 +93,6 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
     return this;
   }
 
-  get maxWorkers() {
-    return this.config.maxWorkers;
-  }
-
-  get factory() {
-    return this.config.factory;
-  }
-
-  get defaultMaxRetries() {
-    return this.config.defaultMaxRetries;
-  }
-
-  get defaultDelay() {
-    return this.config.defaultDelay;
-  }
-
   static from<Input, Output>(items: Iterable<Input>, config: AsyncQueueConfig<Input, Output> = {}) {
     config = { maxWorkers: 3, ...config };
     if (!config.factory) {
@@ -137,7 +119,7 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
 
   async *[Symbol.asyncIterator](): AsyncGenerator<Result<Output>, void, void> {
     while (this.size) {
-      while (this.concurrent < this.maxWorkers && this.queue.size) {
+      while (this.concurrent < this.config.maxWorkers && this.queue.size) {
         this.process();
       }
       yield this.output.dequeue();
@@ -146,7 +128,7 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
 
   protected createTask(req: Input | Request<Output>, config: TaskConfig): Promise<Result<Output>> {
     return new Promise(async resolve => {
-      config.processing = this.concurrent++;
+      config.processing = ++this.concurrent;
       if (config.attempts > 0) {
         this.notify("retry", config);
       } else {
@@ -156,9 +138,9 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
       if (typeof req === "function") {
         result = new Result(await (req as Request<Output>)().catch(err => err));
       } else {
-        result = new Result(await this.factory(req).catch(err => err));
+        result = new Result(await this.config.factory(req).catch(err => err));
       }
-      config.processing = this.concurrent--;
+      config.processing = --this.concurrent;
       if (result.isErr() && config.attempts < config.maxRetries) {
         config.delay = 2 ** config.attempts * 50;
         this.notify("fail", config);
@@ -173,8 +155,8 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
 
   enqueue(req: Input | Request<Output>, config: RequestConfig = {}): void {
     config = {
-      maxRetries: this.defaultMaxRetries,
-      delay: this.defaultDelay,
+      maxRetries: this.config.defaultMaxRetries,
+      delay: this.config.defaultDelay,
       ...config
     };
     const taskConfig: TaskConfig = {
@@ -182,7 +164,7 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
       order: this.size + 1,
       ...config
     }
-    if (!this.factory && typeof req !== "function") {
+    if (!this.config.factory && typeof req !== "function") {
       throw new Error("Invalid request: Either provide a factory method to the class, or use a callback.");
     }
     if (config.delay > 0) {
@@ -214,7 +196,7 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
 
   protected delay(req: Input | Request<Output>, delay: number): Request<Output> {
     return () => new Promise(resolve => {
-      setTimeout(() => resolve(typeof req === "function" ? (req as Request<Output>)() : this.factory(req)), delay);
+      setTimeout(() => resolve(typeof req === "function" ? (req as Request<Output>)() : this.config.factory(req)), delay);
     });
   }
 

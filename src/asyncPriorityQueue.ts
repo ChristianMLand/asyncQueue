@@ -1,27 +1,16 @@
 import { PriorityQueue } from "./priorityQueue.js";
-import { AsyncQueue, Task, Request, Factory, EventType } from "./asyncQueue.js";
+import { AsyncQueue, Task, Request, EventType, AsyncQueueConfig, TaskConfig, RequestConfig } from "./asyncQueue.js";
 
-export type AsyncPriorityQueueConfig<Input, Output> = {
-  maxWorkers?: number,
-  factory?: Factory<Input, Output>,
-  defaultPriority?: number,
-  defaultMaxRetries?: number,
-  defaultDelay?: number
+export interface AsyncPriorityQueueConfig<Input, Output> extends AsyncQueueConfig<Input, Output> {
+  defaultPriority?: number;
 }
 
-export type TaskConfig = {
-  order?: number,
-  priority?: number,
-  maxRetries?: number,
-  attempts?: number,
-  processing?: number,
-  delay?: number,
+export interface PriorityTaskConfig extends TaskConfig {
+  priority?: number;
 }
 
-export type RequestConfig = {
-  delay?: number,
-  priority?: number,
-  maxRetries?: number
+export interface PriorityRequestConfig extends RequestConfig {
+  priority?: number;
 }
 
 export class AsyncPriorityQueue<Input, Output> extends AsyncQueue<Input, Output> {
@@ -40,27 +29,23 @@ export class AsyncPriorityQueue<Input, Output> extends AsyncQueue<Input, Output>
     this.queue = new PriorityQueue();
   }
 
-  on(eventType: EventType, cb: (event: TaskConfig) => void): void {
+  on(eventType: EventType, cb: (event: PriorityTaskConfig) => void): void {
     this.callbacks[eventType] = cb;
   }
 
-  get defaultPriority() {
-    return this.config.defaultPriority;
-  }
-
-  override enqueue(req: Input | Request<Output>, config: RequestConfig = {}): void {
+  override enqueue(req: Input | Request<Output>, config: PriorityRequestConfig = {}): void {
     config = {
-      maxRetries: this.defaultMaxRetries,
-      delay: this.defaultDelay,
-      priority: this.defaultPriority,
+      maxRetries: this.config.defaultMaxRetries,
+      delay: this.config.defaultDelay,
+      priority: this.config.defaultPriority,
       ...config
     };
-    const taskConfig: TaskConfig = {
+    const taskConfig: PriorityTaskConfig = {
       attempts: 0,
       order: this.size + 1,
       ...config
     }
-    if (!this.factory && typeof req !== "function") {
+    if (!this.config.factory && typeof req !== "function") {
       throw new Error("Invalid task! Either provide a factory method in the config, or use a callback.");
     }
     if (config.delay > 0) {
