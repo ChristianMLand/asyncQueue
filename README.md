@@ -108,8 +108,9 @@ q.on("retry", ({ index, priority }) => {
 The event data provided includes:
 - `order`: The order number in which the request was enqueued, starting from 1.
 - `attempts`: The amount of times the request has failed, starting from 0.
+- `processing`: The amount of requests concurrently processing.
 
-as well as any provided task config data.
+as well as all task config data.
 ## Iterating synchronously (Not recommended)
 In addition to being an asychronous iterable, `AsyncQueue` is also a synchronous iterable that yields promises.
 >**NOTE:** any `AsyncQueue` methods performed while iterating synchronously (such as `enqueue()` or `clear()`) will not take effect until the iteration completes. *This includes automatically retrying any failed requests*.
