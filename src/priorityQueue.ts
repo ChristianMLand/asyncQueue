@@ -15,6 +15,12 @@ export class PriorityQueue<T> implements QueueLike<T, T> {
     this.#count = 0;
   }
 
+  *[Symbol.iterator]() {
+    while (this.size) {
+      yield this.dequeue();
+    }
+  }
+
   clear(): void {
     this.#heap.length = 1;
     this.#count = 0;

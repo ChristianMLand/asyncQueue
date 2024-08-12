@@ -65,4 +65,5 @@ async function fetchPokemonName(id: number): Promise<string> {
       console.error(result.value.toString());
     }
   }
+  console.log("------- end q1 ----------");
 })();
