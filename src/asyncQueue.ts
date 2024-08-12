@@ -41,10 +41,15 @@ export type AsyncQueueConfig<Input, Output> = {
 
 export type TaskConfig = {
   order?: number,
-  priority?: number,
   maxRetries?: number,
   attempts?: number,
+  processing?: number,
   delay?: number,
+}
+
+export type RequestConfig = {
+  delay?: number,
+  maxRetries?: number
 }
 
 export type CallbackMap = {
@@ -88,6 +93,10 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
   withConfig(config: AsyncQueueConfig<Input, Output>) {
     this.config = { ...this.config, ...config };
     return this;
+  }
+
+  get processing() {
+    return this.concurrent;
   }
 
   get maxWorkers() {
@@ -166,21 +175,25 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
     })
   }
 
-  enqueue(req: Input | Request<Output>, config: TaskConfig = {}): void {
+  enqueue(req: Input | Request<Output>, config: RequestConfig = {}): void {
     config = {
-      attempts: 0,
-      order: this.size + 1,
       maxRetries: this.defaultMaxRetries,
       delay: this.defaultDelay,
       ...config
     };
+    const taskConfig: TaskConfig = {
+      attempts: 0,
+      order: this.size + 1,
+      processing: this.processing,
+      ...config
+    }
     if (!this.factory && typeof req !== "function") {
       throw new Error("Invalid request: Either provide a factory method to the class, or use a callback.");
     }
     if (config.delay > 0) {
       req = this.delay(req, config.delay);
     }
-    this.queue.enqueue(() => this.createTask(req, config));
+    this.queue.enqueue(() => this.createTask(req, taskConfig));
   }
 
   async dequeue(): Promise<Result<Output>> {
