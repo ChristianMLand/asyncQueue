@@ -95,10 +95,6 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
     return this;
   }
 
-  get processing() {
-    return this.concurrent;
-  }
-
   get maxWorkers() {
     return this.config.maxWorkers;
   }
@@ -150,8 +146,7 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
 
   protected createTask(req: Input | Request<Output>, config: TaskConfig): Promise<Result<Output>> {
     return new Promise(async resolve => {
-      this.concurrent++;
-      config.processing = this.processing;
+      config.processing = this.concurrent++;
       if (config.attempts > 0) {
         this.notify("retry", config);
       } else {
@@ -163,8 +158,7 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
       } else {
         result = new Result(await this.factory(req).catch(err => err));
       }
-      this.concurrent--;
-      config.processing = this.processing;
+      config.processing = this.concurrent--;
       if (result.isErr() && config.attempts < config.maxRetries) {
         config.delay = 2 ** config.attempts * 50;
         this.notify("fail", config);

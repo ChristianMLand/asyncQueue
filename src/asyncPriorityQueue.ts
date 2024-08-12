@@ -58,7 +58,6 @@ export class AsyncPriorityQueue<Input, Output> extends AsyncQueue<Input, Output>
     const taskConfig: TaskConfig = {
       attempts: 0,
       order: this.size + 1,
-      processing: this.processing,
       ...config
     }
     if (!this.factory && typeof req !== "function") {
