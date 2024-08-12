@@ -16,7 +16,7 @@ Queue Config options include:
 ```ts
 const q = new AsyncQueue({ maxworkers: 3 });
 ```
-Alternatively you can generate an AsyncQueue by providing a factory and a synchronous iterable.
+Alternatively you can generate an AsyncQueue by providing a factory and a synchronous iterable to the static `from()` method.
 ```ts
 const q2 = AsyncQueue.from([1,2,3,4], { factory: api });
 ```

@@ -1,8 +1,5 @@
 import axios, { AxiosResponse } from "axios";
-import { Queue } from './queue.js';
-import { AsyncQueue } from "./asyncQueue.js";
-import { PriorityQueue } from './priorityQueue.js';
-import { AsyncPriorityQueue } from "./asyncPriorityQueue.js";
+import { Queue, AsyncQueue, PriorityQueue, AsyncPriorityQueue } from './index.js';
 
 type PokeData = {
   name: string
