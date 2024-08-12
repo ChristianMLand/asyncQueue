@@ -20,20 +20,20 @@ async function fetchPokemonName(id: number): Promise<string> {
 
   const q = new AsyncPriorityQueue(qConfig);
 
-  q.on("start", ({ order, priority }) => {
-    console.warn(`Starting task: ${order}, priority: ${priority}`);
+  q.on("start", ({ order, priority, processing }) => {
+    console.warn(`Starting task: ${order}, priority: ${priority}, processing: ${processing}`);
   });
 
-  q.on("end", ({ order, priority }) => {
-    console.warn(`Finished task: ${order}, priority: ${priority}`);
+  q.on("end", ({ order, priority, processing }) => {
+    console.warn(`Finished task: ${order}, priority: ${priority}, processing: ${processing}`);
   })
 
   q.on("fail", ({ order, delay }) => {
     console.error(`Failed   task: ${order}, retrying in ${delay}ms...`);
   });
 
-  q.on("retry", ({ order, priority }) => {
-    console.warn(`Retrying task: ${order}, priority: ${priority}`);
+  q.on("retry", ({ order, priority, processing }) => {
+    console.warn(`Retrying task: ${order}, priority: ${priority}, processing: ${processing}`);
   });
 
   q.enqueue(() => Promise.reject(new Error("Failed")), { delay: 250 });
