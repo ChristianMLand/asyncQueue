@@ -1,0 +1,27 @@
+{
+  "author": "Christian Land",
+  "version": "1.0.0",
+  "main": "./dist/main.js",
+  "scripts": {
+    "dev": "npx tsx src/main.ts",
+    "build": "tsc",
+    "test": "mocha"
+  },
+  "type": "module",
+  "directories": {
+    "src": "./src",
+    "test": "./src/test",
+    "dist": "./dist"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/chai": "^4.3.17",
+    "@types/core-js": "^2.5.8",
+    "@types/mocha": "^10.0.7",
+    "axios": "^1.7.3",
+    "chai": "^5.1.1",
+    "mocha": "^10.7.3",
+    "tsx": "^4.17.0",
+    "typescript": "^5.5.4"
+  }
+}
