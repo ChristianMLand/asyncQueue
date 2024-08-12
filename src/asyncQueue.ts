@@ -26,10 +26,6 @@ export class Result<T> {
   }
 }
 
-export type Request<T> = () => Promise<T>;
-
-export type Task<T> = () => Promise<Result<T>>;
-
 export type Factory<Input, Output> = (value: Input) => Promise<Output>;
 
 export interface AsyncQueueConfig<Input, Output> {
@@ -50,21 +46,27 @@ export interface TaskConfig extends RequestConfig {
   processing?: number;
 }
 
-export type CallbackMap = {
-  start?: (event: TaskConfig) => void,
-  end?: (event: TaskConfig) => void,
-  fail?: (event: TaskConfig) => void,
-  retry?: (event: TaskConfig) => void
+export type EventHandler = (event: TaskConfig) => void;
+
+export type EventHandlers = {
+  start?: EventHandler,
+  end?: EventHandler,
+  fail?: EventHandler,
+  retry?: EventHandler
 }
 
-export type EventType = "start" | "end" | "fail" | "retry";
+export type EventType = keyof EventHandlers;
 
-export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Promise<Result<Output>>> {
+export type Request<Output> = () => Promise<Output>;
+
+export type Task<Output> = () => Promise<Result<Output>>;
+
+export class AsyncQueue<Input, Output> implements QueueLike<Input | Request<Output>, Promise<Result<Output>>> {
   protected config: AsyncQueueConfig<Input, Output>;
   protected queue: QueueLike<Task<Output>, Task<Output>>;
   protected output: Queue<Promise<Result<Output>>>;
-  protected concurrent: number;
-  protected callbacks: CallbackMap;
+  protected processing: number;
+  protected handlers: EventHandlers;
 
   constructor(config: AsyncQueueConfig<Input, Output> = {}) {
     this.config = {
@@ -75,17 +77,17 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
     };
     this.queue = new Queue();
     this.output = new Queue();
-    this.concurrent = 0;
-    this.callbacks = {};
+    this.processing = 0;
+    this.handlers = {};
   }
 
   on(eventType: EventType, cb: (event: TaskConfig) => void): void {
-    this.callbacks[eventType] = cb;
+    this.handlers[eventType] = cb;
   }
 
   protected notify(eventType: EventType, data: any) {
-    if (this.callbacks[eventType] === undefined) return;
-    this.callbacks[eventType](data);
+    if (this.handlers[eventType] === undefined) return;
+    this.handlers[eventType](data);
   }
 
   withConfig(config: AsyncQueueConfig<Input, Output>) {
@@ -94,11 +96,7 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
   }
 
   static from<Input, Output>(items: Iterable<Input>, config: AsyncQueueConfig<Input, Output> = {}) {
-    config = { maxWorkers: 3, ...config };
-    if (!config.factory) {
-      throw new ReferenceError("Must provide a factory method!");
-    }
-    const q = new AsyncQueue<Input, Output>(config);
+    const q = new AsyncQueue(config);
     for (const item of items) {
       q.enqueue(item);
     }
@@ -119,32 +117,27 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
 
   async *[Symbol.asyncIterator](): AsyncGenerator<Result<Output>, void, void> {
     while (this.size) {
-      while (this.concurrent < this.config.maxWorkers && this.queue.size) {
+      while (this.processing < this.config.maxWorkers && this.queue.size) {
         this.process();
       }
       yield this.output.dequeue();
     }
   }
 
+  protected isCallback<Input, Output>(maybeFunc: Input | Request<Output>): maybeFunc is Request<Output> {
+    return typeof maybeFunc === 'function';
+  }
+
   protected createTask(req: Input | Request<Output>, config: TaskConfig): Promise<Result<Output>> {
     return new Promise(async resolve => {
-      config.processing = ++this.concurrent;
-      if (config.attempts > 0) {
-        this.notify("retry", config);
-      } else {
-        this.notify("start", config);
-      }
-      let result: Result<Output>;
-      if (typeof req === "function") {
-        result = new Result(await (req as Request<Output>)().catch(err => err));
-      } else {
-        result = new Result(await this.config.factory(req).catch(err => err));
-      }
-      config.processing = --this.concurrent;
+      config.processing = ++this.processing;
+      this.notify(config.attempts > 0 ? "retry" : "start", config);
+      const result = new Result(await (this.isCallback(req) ? req() : this.config.factory(req)).catch(err => err));
+      config.processing = --this.processing;
       if (result.isErr() && config.attempts < config.maxRetries) {
         config.delay = 2 ** config.attempts * 50;
-        this.notify("fail", config);
         config.attempts++;
+        this.notify("fail", config);
         this.enqueue(req, config);
       } else {
         this.notify("end", config);
@@ -154,21 +147,18 @@ export class AsyncQueue<Input, Output> implements QueueLike<Request<Output>, Pro
   }
 
   enqueue(req: Input | Request<Output>, config: RequestConfig = {}): void {
-    config = {
+    const taskConfig: TaskConfig = {
       maxRetries: this.config.defaultMaxRetries,
       delay: this.config.defaultDelay,
-      ...config
-    };
-    const taskConfig: TaskConfig = {
       attempts: 0,
       order: this.size + 1,
       ...config
     }
-    if (!this.config.factory && typeof req !== "function") {
+    if (!this.config.factory && !this.isCallback(req)) {
       throw new Error("Invalid request: Either provide a factory method to the class, or use a callback.");
     }
-    if (config.delay > 0) {
-      req = this.delay(req, config.delay);
+    if (taskConfig.delay > 0) {
+      req = this.delay(req, taskConfig.delay);
     }
     this.queue.enqueue(() => this.createTask(req, taskConfig));
   }

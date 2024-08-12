@@ -1,5 +1,12 @@
 import { PriorityQueue } from "./priorityQueue.js";
-import { AsyncQueue, Task, Request, EventType, AsyncQueueConfig, TaskConfig, RequestConfig } from "./asyncQueue.js";
+import {
+  AsyncQueue,
+  Task, Request,
+  EventType,
+  AsyncQueueConfig,
+  TaskConfig,
+  RequestConfig
+} from "./asyncQueue.js";
 
 export interface AsyncPriorityQueueConfig<Input, Output> extends AsyncQueueConfig<Input, Output> {
   defaultPriority?: number;
@@ -18,39 +25,37 @@ export class AsyncPriorityQueue<Input, Output> extends AsyncQueue<Input, Output>
   declare protected config: AsyncPriorityQueueConfig<Input, Output>;
 
   constructor(config: AsyncPriorityQueueConfig<Input, Output> = {}) {
-    super();
-    this.config = {
-      maxWorkers: 3,
-      defaultPriority: 0,
-      defaultMaxRetries: 0,
-      defaultDelay: 0,
-      ...config
-    };
+    super({ defaultPriority: 0, ...config });
     this.queue = new PriorityQueue();
   }
 
-  on(eventType: EventType, cb: (event: PriorityTaskConfig) => void): void {
-    this.callbacks[eventType] = cb;
+  static override from<Input, Output>(items: Iterable<Input>, config: AsyncPriorityQueueConfig<Input, Output> = {}) {
+    const q = new AsyncPriorityQueue(config);
+    for (const item of items) {
+      q.enqueue(item);
+    }
+    return q;
+  }
+
+  override on(eventType: EventType, cb: (event: PriorityTaskConfig) => void): void {
+    super.on(eventType, cb);
   }
 
   override enqueue(req: Input | Request<Output>, config: PriorityRequestConfig = {}): void {
-    config = {
+    const taskConfig: PriorityTaskConfig = {
       maxRetries: this.config.defaultMaxRetries,
       delay: this.config.defaultDelay,
       priority: this.config.defaultPriority,
-      ...config
-    };
-    const taskConfig: PriorityTaskConfig = {
       attempts: 0,
       order: this.size + 1,
       ...config
     }
-    if (!this.config.factory && typeof req !== "function") {
-      throw new Error("Invalid task! Either provide a factory method in the config, or use a callback.");
+    if (!this.config.factory && !this.isCallback(req)) {
+      throw new Error("Invalid request: Either provide a factory method in the config, or use a callback.");
     }
-    if (config.delay > 0) {
-      req = this.delay(req, config.delay);
+    if (taskConfig.delay > 0) {
+      req = this.delay(req, taskConfig.delay);
     }
-    this.queue.enqueue(() => this.createTask(req, taskConfig), config.priority);
+    this.queue.enqueue(() => this.createTask(req, taskConfig), taskConfig.priority);
   }
 }

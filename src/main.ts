@@ -1,5 +1,10 @@
 import axios, { AxiosResponse } from "axios";
-import { Queue, AsyncQueue, PriorityQueue, AsyncPriorityQueue } from './index.js';
+import {
+  Queue,
+  AsyncQueue,
+  PriorityQueue,
+  AsyncPriorityQueue
+} from './index.js';
 
 type PokeData = {
   name: string
@@ -42,7 +47,7 @@ async function fetchPokemonName(id: number): Promise<string> {
     q.enqueue(i);
   }
 
-  q.enqueue(493, { priority: 1 });
+  q.enqueue(493, { priority: 100 });
 
   console.log("------- start q1 --------")
   while (q.size) {
