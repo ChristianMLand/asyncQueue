@@ -5,18 +5,6 @@ type PokeData = {
   name: string
 }
 
-function delayRequest<T>(req: Promise<T>, delay: number): Promise<T> {
-  return new Promise<T>(resolve => {
-    setTimeout(async () => resolve(await req), delay);
-  });
-}
-
-function failRequest(delay: number): Promise<any> {
-  return new Promise<Error>((_, reject) => {
-    setTimeout(() => reject(new Error("Failed request")), delay);
-  });
-}
-
 async function fetchPokemonName(id: number): Promise<string> {
   return axios
     .get("https://pokeapi.co/api/v2/pokemon/" + id)
@@ -48,7 +36,7 @@ async function fetchPokemonName(id: number): Promise<string> {
     console.warn(`Retrying task: ${order}, priority: ${priority}`);
   });
 
-  q.enqueue(() => failRequest(250));
+  q.enqueue(() => Promise.reject(new Error("Failed")), { delay: 250 });
 
   for (let i = 1; i < 10; i++) {
     q.enqueue(i);
