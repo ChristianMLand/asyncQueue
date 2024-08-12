@@ -124,15 +124,16 @@ export class AsyncQueue<Input, Output> implements QueueLike<Input | Request<Outp
     }
   }
 
-  protected isCallback<Input, Output>(maybeFunc: Input | Request<Output>): maybeFunc is Request<Output> {
-    return typeof maybeFunc === 'function';
+  protected isCallback<Input, Output>(req: Input | Request<Output>): req is Request<Output> {
+    return typeof req === 'function';
   }
 
   protected createTask(req: Input | Request<Output>, config: TaskConfig): Promise<Result<Output>> {
     return new Promise(async resolve => {
       config.processing = ++this.processing;
       this.notify(config.attempts > 0 ? "retry" : "start", config);
-      const result = new Result(await (this.isCallback(req) ? req() : this.config.factory(req)).catch(err => err));
+      const promise = this.isCallback(req) ? req() : this.config.factory(req);
+      const result = new Result(await promise.catch(err => err));
       config.processing = --this.processing;
       if (result.isErr() && config.attempts < config.maxRetries) {
         config.delay = 2 ** config.attempts * 50;
