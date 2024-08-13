@@ -15,6 +15,14 @@ export class PriorityQueue<T> implements QueueLike<T, T> {
     this.#count = 0;
   }
 
+  static from<T>(items: Iterable<T>) : PriorityQueue<T> {
+    const q = new PriorityQueue<T>();
+    for (const item of items) {
+      q.enqueue(item);
+    }
+    return q;
+  }
+
   *[Symbol.iterator]() {
     while (this.size) {
       yield this.dequeue();
@@ -45,7 +53,7 @@ export class PriorityQueue<T> implements QueueLike<T, T> {
     this.#heap[idxB] = tmp;
   }
 
-  enqueue(data: T, priority: number = 2): void {
+  enqueue(data: T, priority: number = 0): void {
     this.#heap.push({ data, priority, order: this.#count++ });
     let taskIdx = this.size;
     let parIdx = Math.floor(taskIdx / 2);
@@ -57,7 +65,7 @@ export class PriorityQueue<T> implements QueueLike<T, T> {
   }
 
   dequeue(): T {
-    const min = this.#heap[1].data;
+    const max = this.#heap[1].data;
     this.#heap[1] = this.#heap[this.size];
     this.#heap.pop();
     let parIdx = 1;
@@ -73,6 +81,6 @@ export class PriorityQueue<T> implements QueueLike<T, T> {
         smallerIdx++;
       }
     }
-    return min;
+    return max;
   }
 }
