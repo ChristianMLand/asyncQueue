@@ -1,98 +1,68 @@
 import { Queue, QueueLike } from "./queue.js";
-
-export class Result<T> {
-  readonly value: T | Error;
-
-  constructor(value: T | Error) {
-    this.value = value;
-  }
-
-  isErr(): boolean {
-    return this.value instanceof Error;
-  }
-
-  isOk(): boolean {
-    return !this.isErr();
-  }
-
-  unwrap(fallback?: T): T {
-    if (this.isOk()) {
-      return this.value as T;
-    }
-    if (this.isErr() && fallback !== undefined) {
-      return fallback;
-    }
-    throw this.value;
-  }
-}
+import { PriorityQueue } from "./priorityQueue.js";
 
 export type Factory<Input, Output> = (value: Input) => Promise<Output>;
 
 export interface AsyncQueueConfig<Input, Output> {
   maxWorkers?: number;
-  factory?: Factory<Input, Output>;
+  defaultFactory?: Factory<Input, Output>;
   defaultMaxRetries?: number;
   defaultDelay?: number;
+  defaultPriority?: number;
 }
 
-export interface RequestConfig {
+export interface RequestConfig<T, U> {
   delay?: number;
   maxRetries?: number;
+  priority?: number;
+  factory?: Factory<T, U>;
 }
 
-export interface TaskConfig extends RequestConfig {
-  order?: number;
-  attempts?: number;
+export interface TaskConfig<T, U> extends RequestConfig<T, U> {
+  order: number;
+  priority: number;
+  factory: Factory<T, U>;
+  attempts: number;
+  request: T;
   processing?: number;
+  result?: U;
+  error?: Error;
 }
 
-export type EventHandler = (event: TaskConfig) => void;
+export type EventHandler<T, U> = (event: TaskConfig<T, U>) => any;
 
-export type EventHandlers = {
-  start?: EventHandler,
-  end?: EventHandler,
-  fail?: EventHandler,
-  retry?: EventHandler
-}
+export type EventHandlers<T, U> = {
+  start?: EventHandler<T, U>,
+  end?: EventHandler<T, U>,
+  fail?: EventHandler<T, U>,
+  retry?: EventHandler<T, U>
+};
 
-export type EventType = keyof EventHandlers;
+export type EventType = keyof EventHandlers<any, any>;
 
 export type Request<Output> = () => Promise<Output>;
 
-export type Task<Output> = () => Promise<Result<Output>>;
+export type Task<Output> = () => Promise<Output>;
 
-export class AsyncQueue<Input, Output> implements QueueLike<Input | Request<Output>, Promise<Result<Output>>> {
-  protected config: AsyncQueueConfig<Input, Output>;
-  protected queue: QueueLike<Task<Output>, Task<Output>>;
-  protected output: Queue<Promise<Result<Output>>>;
-  protected processing: number;
-  protected handlers: EventHandlers;
+export class AsyncQueue<Input, Output> implements QueueLike<Input, Promise<Output>> {
+  #config: AsyncQueueConfig<Input, Output>;
+  #handlers: EventHandlers<Input, Output>;
+  #queue: PriorityQueue;
+  #output: Queue<Promise<Output>>;
+  #processing: number;
 
   constructor(config: AsyncQueueConfig<Input, Output> = {}) {
-    this.config = {
+    this.#config = {
+      defaultPriority: 0,
       maxWorkers: 3,
       defaultMaxRetries: 0,
       defaultDelay: 0,
       ...config
     };
-    this.queue = new Queue();
-    this.output = new Queue();
-    this.processing = 0;
-    this.handlers = {};
-  }
-
-  on(eventType: EventType, cb: (event: TaskConfig) => void): void {
-    this.handlers[eventType] = cb;
-  }
-
-  protected notify(eventType: EventType, data: any) {
-    if (this.handlers[eventType] === undefined) return;
-    this.handlers[eventType](data);
-  }
-
-  withConfig(config: AsyncQueueConfig<Input, Output>) {
-    this.config = { ...this.config, ...config };
-    return this;
+    this.#queue = new PriorityQueue();
+    this.#output = new Queue();
+    this.#processing = 0;
+    this.#handlers = {};
   }
 
   static from<Input, Output>(items: Iterable<Input>, config: AsyncQueueConfig<Input, Output> = {}) {
@@ -103,100 +73,112 @@ export class AsyncQueue<Input, Output> implements QueueLike<Input | Request<Outp
     return q;
   }
 
-  get size(): number {
-    return this.queue.size + this.output.size;
-  }
-
-  *[Symbol.iterator](): Generator<Promise<Result<Output>>, void, void> {
+  *[Symbol.iterator](): Generator<Promise<Output>, void, void> {
     const iter = this[Symbol.asyncIterator]();
     const size = this.size;
     for (let i = 0; i < size; i++) {
-      yield iter.next().then(r => r.value) as Promise<Result<Output>>;
+      yield iter.next().then(r => r.value) as Promise<Output>;
     }
   }
 
-  async *[Symbol.asyncIterator](): AsyncGenerator<Result<Output>, void, void> {
+  async *[Symbol.asyncIterator](): AsyncGenerator<Output, void, void> {
     while (this.size) {
-      while (this.processing < this.config.maxWorkers && this.queue.size) {
-        this.process();
+      while (this.#processing < this.#config.maxWorkers && this.#queue.size) {
+        this.#process();
       }
-      yield this.output.dequeue();
+      yield this.#output.dequeue();
     }
   }
 
-  protected isCallback<Input, Output>(req: Input | Request<Output>): req is Request<Output> {
-    return typeof req === 'function';
+  get size(): number {
+    return this.#queue.size + this.#output.size;
   }
 
-  protected createTask(req: Input | Request<Output>, config: TaskConfig): Promise<Result<Output>> {
-    return new Promise(async resolve => {
-      config.processing = ++this.processing;
-      this.notify(config.attempts > 0 ? "retry" : "start", config);
-      const promise = this.isCallback(req) ? req() : this.config.factory(req);
-      const result = new Result(await promise.catch(err => err));
-      config.processing = --this.processing;
-      if (result.isErr() && config.attempts < config.maxRetries) {
-        config.delay = 2 ** config.attempts * 50;
-        config.attempts++;
-        this.notify("fail", config);
-        this.enqueue(req, config);
-      } else {
-        this.notify("end", config);
-      }
-      resolve(result);
-    })
-  }
-
-  enqueue(req: Input | Request<Output>, config: RequestConfig = {}): void {
-    const taskConfig: TaskConfig = {
-      maxRetries: this.config.defaultMaxRetries,
-      delay: this.config.defaultDelay,
+  enqueue(req: Input, config: RequestConfig<Input, Output> = {}): void {
+    const taskConfig: TaskConfig<Input, Output> = {
+      factory: this.#config.defaultFactory,
+      priority: this.#config.defaultPriority,
+      maxRetries: this.#config.defaultMaxRetries,
+      delay: this.#config.defaultDelay,
+      request: req,
       attempts: 0,
       order: this.size + 1,
       ...config
     }
-    if (!this.config.factory && !this.isCallback(req)) {
+    if (!taskConfig.factory) {
       throw new Error("Invalid request: Either provide a factory method to the class, or use a callback.");
     }
-    if (taskConfig.delay > 0) {
-      req = this.delay(req, taskConfig.delay);
-    }
-    this.queue.enqueue(() => this.createTask(req, taskConfig));
+    this.#queue.enqueue(taskConfig);
   }
 
-  async dequeue(): Promise<Result<Output>> {
+  async dequeue(): Promise<Output> {
     const { value, done } = await this[Symbol.asyncIterator]().next();
     if (done) {
       throw new Error("Queue is empty!");
     }
-    return value as Result<Output>;
+    return value as Output;
   }
 
   clear(): void {
-    this.queue.clear();
-    this.output.clear();
+    this.#queue.clear();
+    this.#output.clear();
   }
 
-  async collect(): Promise<Array<Result<Output>>> {
-    const output: Array<Result<Output>> = [];
+  withConfig(config: AsyncQueueConfig<Input, Output>) {
+    this.#config = { ...this.#config, ...config };
+    return this;
+  }
+
+  on(eventType: EventType, cb: (event: TaskConfig<Input, Output>) => void): void {
+    this.#handlers[eventType] = cb;
+  }
+
+  async collect(): Promise<Array<Output>> {
+    const output: Array<Output> = [];
     for await (const task of this) {
       output.push(task);
     }
     return output;
   }
 
-  protected delay(req: Input | Request<Output>, delay: number): Request<Output> {
-    return () => new Promise(resolve => {
-      setTimeout(() => resolve(typeof req === "function" ? (req as Request<Output>)() : this.config.factory(req)), delay);
-    });
+  #notify(eventType: EventType, data: any) {
+    if (this.#handlers[eventType] === undefined) return;
+    this.#handlers[eventType](data);
   }
 
-  protected async process(): Promise<void> {
-    while (this.queue.size) {
-      const task = this.queue.dequeue()!;
-      const promise = task();
-      this.output.enqueue(promise);
+  async #process(): Promise<void> {
+    while (this.#queue.size) {
+      const promise = this.#createTask(this.#queue.dequeue() as TaskConfig<Input, Output>);
+      this.#output.enqueue(promise);
       await promise;
     }
+  }
+
+  #timeout(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  #createTask(config: TaskConfig<Input, Output>): Promise<Output> {
+    return new Promise(async resolve => {
+      if (config.delay) {
+        await this.#timeout(config.delay);
+      }
+      config.processing = ++this.#processing;
+      this.#notify(config.attempts > 0 ? "retry" : "start", config);
+      const result = await config.factory(config.request).catch(err => err);
+      config.processing = --this.#processing;
+      if (!(result instanceof Error)) {
+        config.result = result;
+        this.#notify("end", config);
+        return resolve(result);
+      } else if (config.attempts < config.maxRetries) {
+        config.delay = 2 ** config.attempts * 1000;
+        config.attempts++;
+        config.error = result;
+        this.#notify("fail", config);
+        this.enqueue(config.request, config);
+      }
+      resolve(undefined);
+    });
   }
 }

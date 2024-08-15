@@ -26,18 +26,18 @@ export class Queue<T> implements QueueLike<T, T> {
         this.#tail = null;
     }
 
-    *[Symbol.iterator]() {
-        while (this.size) {
-            yield this.dequeue();
-        }
-    }
-
     static from<T>(items: Iterable<T>): Queue<T> {
         const q = new Queue<T>();
         for (const item of items) {
             q.enqueue(item);
         }
         return q;
+    }
+
+    *[Symbol.iterator]() {
+        while (this.size) {
+            yield this.dequeue();
+        }
     }
 
     get size(): number {

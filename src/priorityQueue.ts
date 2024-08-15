@@ -1,22 +1,19 @@
 import { QueueLike } from "./queue.js";
 
-type Task<T> = {
+type Task = {
   order: number,
   priority: number,
-  data: T
 }
 
-export class PriorityQueue<T> implements QueueLike<T, T> {
-  #heap: Task<T>[];
-  #count: number;
+export class PriorityQueue implements QueueLike<Task, Task> {
+  #heap: Task[];
 
   constructor() {
     this.#heap = [null];
-    this.#count = 0;
   }
 
-  static from<T>(items: Iterable<T>) : PriorityQueue<T> {
-    const q = new PriorityQueue<T>();
+  static from(items: Iterable<Task>) : PriorityQueue {
+    const q = new PriorityQueue();
     for (const item of items) {
       q.enqueue(item);
     }
@@ -29,32 +26,12 @@ export class PriorityQueue<T> implements QueueLike<T, T> {
     }
   }
 
-  clear(): void {
-    this.#heap.length = 1;
-    this.#count = 0;
-  }
-
   get size(): number {
     return this.#heap.length - 1;
   }
 
-  #compare(idxA: number, idxB: number) {
-    const a = this.#heap[idxA];
-    const b = this.#heap[idxB];
-    if (a?.priority === b?.priority) {
-      return a?.order < b?.order;
-    }
-    return a?.priority > b?.priority;
-  }
-
-  #swap(idxA: number, idxB: number) {
-    const tmp = this.#heap[idxA];
-    this.#heap[idxA] = this.#heap[idxB];
-    this.#heap[idxB] = tmp;
-  }
-
-  enqueue(data: T, priority: number = 0): void {
-    this.#heap.push({ data, priority, order: this.#count++ });
+  enqueue(data: Task): void {
+    this.#heap.push(data);
     let taskIdx = this.size;
     let parIdx = Math.floor(taskIdx / 2);
     while (this.#compare(taskIdx, parIdx)) {
@@ -64,8 +41,8 @@ export class PriorityQueue<T> implements QueueLike<T, T> {
     }
   }
 
-  dequeue(): T {
-    const max = this.#heap[1].data;
+  dequeue(): Task {
+    const max = this.#heap[1];
     this.#heap[1] = this.#heap[this.size];
     this.#heap.pop();
     let parIdx = 1;
@@ -82,5 +59,24 @@ export class PriorityQueue<T> implements QueueLike<T, T> {
       }
     }
     return max;
+  }
+
+  clear(): void {
+    this.#heap.length = 1;
+  }
+
+  #compare(idxA: number, idxB: number) {
+    const a = this.#heap[idxA];
+    const b = this.#heap[idxB];
+    if (a?.priority === b?.priority) {
+      return a?.order < b?.order;
+    }
+    return a?.priority > b?.priority;
+  }
+
+  #swap(idxA: number, idxB: number) {
+    const tmp = this.#heap[idxA];
+    this.#heap[idxA] = this.#heap[idxB];
+    this.#heap[idxB] = tmp;
   }
 }
